@@ -1,8 +1,112 @@
-import { util } from 'vue'
+'use strict';
 
-export default {
+var LruCache = function () {
+  'use strict';
 
-  data () {
+  function LruCache(maxSize) {
+    this.maxSize = _.isNumber(maxSize) ? maxSize : 100;
+    this.reset();
+
+    if (this.maxSize <= 0) {
+      this.set = this.get = $.noop;
+    }
+  }
+
+  LruCache.prototype.set = function set(key, val) {
+    var tailItem = this.list.tail,
+      node;
+
+    if (this.size >= this.maxSize) {
+      this.list.remove(tailItem);
+      delete this.hash[tailItem.key];
+
+      this.size--;
+    }
+
+    if (node = this.hash[key]) {
+      node.val = val;
+      this.list.moveToFront(node);
+    } else {
+      node = new Node(key, val);
+
+      this.list.add(node);
+      this.hash[key] = node;
+
+      this.size++;
+    }
+  };
+
+  LruCache.prototype.has = function get(key) {
+    return this.hash.hasOwnProperty(key);
+  };
+
+  LruCache.prototype.get = function get(key) {
+    var node = this.hash[key];
+
+    if (node) {
+      this.list.moveToFront(node);
+      return node.val;
+    }
+  };
+
+  LruCache.prototype.reset = function reset() {
+    this.size = 0;
+    this.hash = {};
+    this.list = new List();
+  };
+
+  function List() {
+    this.head = this.tail = null;
+  }
+
+  List.prototype.add = function add(node) {
+    if (this.head) {
+      node.next = this.head;
+      this.head.prev = node;
+    }
+
+    this.head = node;
+    this.tail = this.tail || node;
+  };
+
+  List.prototype.remove = function remove(node) {
+    node.prev ? node.prev.next = node.next : this.head = node.next;
+    node.next ? node.next.prev = node.prev : this.tail = node.prev;
+  };
+
+  List.prototype.moveToFront = function (node) {
+    this.remove(node);
+    this.add(node);
+  };
+
+  function Node(key, val) {
+    this.key = key;
+    this.val = val;
+    this.prev = this.next = null;
+  }
+
+  return LruCache;
+}();
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _defineProperty2 = require('babel-runtime/helpers/defineProperty');
+
+var _defineProperty3 = _interopRequireDefault(_defineProperty2);
+
+var _assign = require('babel-runtime/core-js/object/assign');
+
+var _assign2 = _interopRequireDefault(_assign);
+
+var _vue = require('vue');
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+exports.default = {
+  data: function data() {
     return {
       sharedCache: null,
       items: [],
@@ -21,34 +125,31 @@ export default {
       queryParamName: 'q',
 
       highlight: true,
-      rateLimitBy: 'debounce', // debounce or throttle
+      rateLimitBy: 'debounce',
       rateLimitWait: 300
-    }
+    };
   },
 
 
   methods: {
-    mounted() {
+    ready: function ready() {
+      this.ensureCacheInit();
     },
+    input: function input() {
+      var context = this,
+        args = arguments;
+      var func = this.update;
+      var immediate = false;
+      var wait = this.rateLimitWait;
 
-
-    /*
-     *   Implements rate limiting for input change events, same as Bloodhound
-     */
-    input() {
-      let context = this, args = arguments;
-      let func = this.update;
-      let immediate = false;
-      let wait = this.rateLimitWait;
-
-      let later = function() {
+      var later = function later() {
         this.timeout = null;
         if (!immediate) {
           func.apply(context, args);
         }
       };
 
-      let callNow = immediate && !this.timeout;
+      var callNow = immediate && !this.timeout;
 
       clearTimeout(this.timeout);
 
@@ -60,9 +161,9 @@ export default {
 
       return;
     },
+    update: function update() {
+      var _this = this;
 
-
-    update () {
       if (!this.query) {
         return this.reset();
       }
@@ -74,46 +175,45 @@ export default {
       this.loading = true;
       this.totalFound = null;
 
-      // use LruCache and check if this search has already been performed...
+      this.ensureCacheInit();
 
-      this.fetch().then((response) => {
-        if (this.query) {
-        let data = response.data
-        data = this.prepareResponseData ? this.prepareResponseData(data) : data
+      var cacheKey = this.query.replace(' ', ':');
 
-        if (this.cacheEmptyResults || data.length > 0) {
-          this.sharedCache.set(cacheKey, data);
-        }
+      if (this.cache && this.sharedCache.has(cacheKey)) {
+        var data = this.sharedCache.get(cacheKey);
 
-        this.processResponseData(data);
-
+        return this.processResponseData(data);
       }
-    })
+
+      this.fetch().then(function (response) {
+        if (_this.query) {
+          var _data = response.data;
+          _data = _this.prepareResponseData ? _this.prepareResponseData(_data) : _data;
+
+          if (_this.cacheEmptyResults || _data.length > 0) {
+            _this.sharedCache.set(cacheKey, _data);
+          }
+
+          _this.processResponseData(_data);
+        }
+      });
     },
-
-
-    fetch () {
+    fetch: function fetch() {
       if (!this.$http) {
-        return util.warn('You need to install the `vue-resource` plugin', this);
+        return _vue.util.warn('You need to install the `vue-resource` plugin', this);
       }
 
       if (!this.src) {
-        return util.warn('You need to set the `src` property', this);
+        return _vue.util.warn('You need to set the `src` property', this);
       }
 
-      const src = this.queryParamName
-        ? this.src
-        : this.src + this.query;
+      var src = this.queryParamName ? this.src : this.src + this.query;
 
-      const params = this.queryParamName
-        ? Object.assign({ [this.queryParamName]: this.query }, this.data)
-        : this.data;
+      var params = this.queryParamName ? (0, _assign2.default)((0, _defineProperty3.default)({}, this.queryParamName, this.query), this.data) : this.data;
 
-      return this.$http.get(src, { params });
+      return this.$http.get(src, { params: params });
     },
-
-
-    processResponseData(data) {
+    processResponseData: function processResponseData(data) {
       this.totalFound = data.length;
       this.items = this.limit ? data.slice(0, this.limit) : data;
       this.current = -1;
@@ -123,40 +223,33 @@ export default {
         this.down();
       }
     },
-
-
-    reset () {
+    ensureCacheInit: function ensureCacheInit() {
+      if (this.cache && !this.sharedCache) {
+        this.sharedCache = new LruCache(this.maxCacheItems);
+      }
+    },
+    reset: function reset() {
       this.items = [];
       this.query = '';
       this.loading = false;
     },
-
-
-    resetCache() {
+    resetCache: function resetCache() {
       this.sharedCache.reset();
     },
-
-
-    setCurrent (index) {
+    setActive: function setActive(index) {
       this.current = index;
     },
-
-
-    currentItemClass (index) {
+    activeClass: function activeClass(index) {
       return {
-        current: this.current === index
+        active: this.current === index
       };
     },
-
-
-    hit () {
+    hit: function hit() {
       if (this.current !== -1) {
         this.onHit(this.items[this.current]);
       }
     },
-
-
-    up () {
+    up: function up() {
       if (this.current > 0) {
         this.current--;
       } else if (this.current === -1) {
@@ -165,52 +258,39 @@ export default {
         this.current = -1;
       }
     },
-
-
-    down () {
+    down: function down() {
       if (this.current < this.items.length - 1) {
         this.current++;
       } else {
         this.current = -1;
       }
     },
-
-
-    onHit () {
-      util.warn('You need to implement the `onHit` method', this);
+    onHit: function onHit() {
+      _vue.util.warn('You need to implement the `onHit` method', this);
     }
-
   },
 
-
   computed: {
-    hasItems () {
+    hasItems: function hasItems() {
       return this.items.length > 0;
     },
-
-    isEmpty () {
+    isEmpty: function isEmpty() {
       return !this.query;
     },
-
-    isDirty () {
+    isDirty: function isDirty() {
       return !!this.query;
     },
-
-    isLoading () {
+    isLoading: function isLoading() {
       return this.loading;
     },
-
-    hasQuery () {
+    hasQuery: function hasQuery() {
       return !this.isEmpty && this.query.length >= this.minChars;
     },
-
-    hasResults () {
+    hasResults: function hasResults() {
       return this.hasQuery && !this.isLoading && this.hasItems;
     },
-
-    hasNoResults () {
+    hasNoResults: function hasNoResults() {
       return this.hasQuery && !this.isLoading && this.totalFound === 0;
     }
   }
-
-}
+};
