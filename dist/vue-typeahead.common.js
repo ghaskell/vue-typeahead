@@ -1,108 +1,179 @@
-'use strict';
+import { util } from 'vue'
 
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
+export default {
 
-var _defineProperty2 = require('babel-runtime/helpers/defineProperty');
-
-var _defineProperty3 = _interopRequireDefault(_defineProperty2);
-
-var _assign = require('babel-runtime/core-js/object/assign');
-
-var _assign2 = _interopRequireDefault(_assign);
-
-var _vue = require('vue');
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-exports.default = {
-  data: function data() {
+  data () {
     return {
+      sharedCache: null,
       items: [],
       query: '',
       current: -1,
+      totalFound: null,
       loading: false,
+      timeout: null,
+
+      cache: true,
+      maxCacheItems: 5,
+      cacheEmptyResults: true,
+      minChars: 0,
       selectFirst: false,
-      queryParamName: 'q'
-    };
-  },
 
+      queryParamName: 'q',
 
-  computed: {
-    hasItems: function hasItems() {
-      return this.items.length > 0;
-    },
-    isEmpty: function isEmpty() {
-      return !this.query;
-    },
-    isDirty: function isDirty() {
-      return !!this.query;
+      highlight: true,
+      rateLimitBy: 'debounce', // debounce or throttle
+      rateLimitWait: 300
     }
   },
 
-  methods: {
-    update: function update() {
-      var _this = this;
 
+  methods: {
+    mounted() {
+      this.ensureCacheInit();
+    },
+
+
+    /*
+     *   Implements rate limiting for input change events, same as Bloodhound
+     */
+    input() {
+      let context = this, args = arguments;
+      let func = this.update;
+      let immediate = false;
+      let wait = this.rateLimitWait;
+
+      let later = function() {
+        this.timeout = null;
+        if (!immediate) {
+          func.apply(context, args);
+        }
+      };
+
+      let callNow = immediate && !this.timeout;
+
+      clearTimeout(this.timeout);
+
+      this.timeout = setTimeout(later, wait);
+
+      if (callNow) {
+        func.apply(context, args);
+      }
+
+      return;
+    },
+
+
+    update () {
       if (!this.query) {
         return this.reset();
       }
 
-      if (this.minChars && this.query.length < this.minChars) {
+      if (this.query.length < this.minChars) {
         return;
       }
 
       this.loading = true;
+      this.totalFound = null;
 
-      this.fetch().then(function (response) {
-        if (_this.query) {
-          var data = response.data;
-          data = _this.prepareResponseData ? _this.prepareResponseData(data) : data;
-          _this.items = _this.limit ? data.slice(0, _this.limit) : data;
-          _this.current = -1;
-          _this.loading = false;
+      // use LruCache and check if this search has already been performed...
+      this.ensureCacheInit();
 
-          if (_this.selectFirst) {
-            _this.down();
-          }
+      let cacheKey = this.query.replace(' ', ':');
+
+      if (this.cache && this.sharedCache.has(cacheKey)) {
+        let data = this.sharedCache.get(cacheKey);
+
+        return this.processResponseData(data);
+      }
+
+      this.fetch().then((response) => {
+        if (this.query) {
+        let data = response.data
+        data = this.prepareResponseData ? this.prepareResponseData(data) : data
+
+        if (this.cacheEmptyResults || data.length > 0) {
+          this.sharedCache.set(cacheKey, data);
         }
-      });
+
+        this.processResponseData(data);
+
+      }
+    })
     },
-    fetch: function fetch() {
+
+
+    fetch () {
       if (!this.$http) {
-        return _vue.util.warn('You need to install the `vue-resource` plugin', this);
+        return util.warn('You need to install the `vue-resource` plugin', this);
       }
 
       if (!this.src) {
-        return _vue.util.warn('You need to set the `src` property', this);
+        return util.warn('You need to set the `src` property', this);
       }
 
-      var src = this.queryParamName ? this.src : this.src + this.query;
+      const src = this.queryParamName
+        ? this.src
+        : this.src + this.query;
 
-      var params = this.queryParamName ? (0, _assign2.default)((0, _defineProperty3.default)({}, this.queryParamName, this.query), this.data) : this.data;
+      const params = this.queryParamName
+        ? Object.assign({ [this.queryParamName]: this.query }, this.data)
+        : this.data;
 
-      return this.$http.get(src, { params: params });
+      return this.$http.get(src, { params });
     },
-    reset: function reset() {
+
+
+    processResponseData(data) {
+      this.totalFound = data.length;
+      this.items = this.limit ? data.slice(0, this.limit) : data;
+      this.current = -1;
+      this.loading = false;
+
+      if (this.selectFirst) {
+        this.down();
+      }
+    },
+
+
+    ensureCacheInit() {
+      if (this.cache && !this.sharedCache) {
+        this.sharedCache = new LruCache(this.maxCacheItems);
+      }
+    },
+
+
+    reset () {
       this.items = [];
       this.query = '';
       this.loading = false;
     },
-    setActive: function setActive(index) {
+
+
+    resetCache() {
+      this.sharedCache.reset();
+    },
+
+
+    setCurrent (index) {
       this.current = index;
     },
-    activeClass: function activeClass(index) {
+
+
+    currentItemClass (index) {
       return {
-        active: this.current === index
+        current: this.current === index
       };
     },
-    hit: function hit() {
+
+
+    hit () {
       if (this.current !== -1) {
         this.onHit(this.items[this.current]);
       }
     },
-    up: function up() {
+
+
+    up () {
       if (this.current > 0) {
         this.current--;
       } else if (this.current === -1) {
@@ -111,15 +182,52 @@ exports.default = {
         this.current = -1;
       }
     },
-    down: function down() {
+
+
+    down () {
       if (this.current < this.items.length - 1) {
         this.current++;
       } else {
         this.current = -1;
       }
     },
-    onHit: function onHit() {
-      _vue.util.warn('You need to implement the `onHit` method', this);
+
+
+    onHit () {
+      util.warn('You need to implement the `onHit` method', this);
+    }
+
+  },
+
+
+  computed: {
+    hasItems () {
+      return this.items.length > 0;
+    },
+
+    isEmpty () {
+      return !this.query;
+    },
+
+    isDirty () {
+      return !!this.query;
+    },
+
+    isLoading () {
+      return this.loading;
+    },
+
+    hasQuery () {
+      return !this.isEmpty && this.query.length >= this.minChars;
+    },
+
+    hasResults () {
+      return this.hasQuery && !this.isLoading && this.hasItems;
+    },
+
+    hasNoResults () {
+      return this.hasQuery && !this.isLoading && this.totalFound === 0;
     }
   }
-};
+
+}
