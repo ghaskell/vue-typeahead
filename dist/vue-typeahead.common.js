@@ -29,7 +29,6 @@ export default {
 
   methods: {
     mounted() {
-      this.ensureCacheInit();
     },
 
 
@@ -76,7 +75,6 @@ export default {
       this.totalFound = null;
 
       // use LruCache and check if this search has already been performed...
-      this.ensureCacheInit();
 
       let cacheKey = this.query.replace(' ', ':');
 
@@ -131,13 +129,6 @@ export default {
 
       if (this.selectFirst) {
         this.down();
-      }
-    },
-
-
-    ensureCacheInit() {
-      if (this.cache && !this.sharedCache) {
-        this.sharedCache = new LruCache(this.maxCacheItems);
       }
     },
 
