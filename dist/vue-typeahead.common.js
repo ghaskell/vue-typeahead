@@ -76,14 +76,6 @@ export default {
 
       // use LruCache and check if this search has already been performed...
 
-      let cacheKey = this.query.replace(' ', ':');
-
-      if (this.cache && this.sharedCache.has(cacheKey)) {
-        let data = this.sharedCache.get(cacheKey);
-
-        return this.processResponseData(data);
-      }
-
       this.fetch().then((response) => {
         if (this.query) {
         let data = response.data
