@@ -211,7 +211,18 @@ exports.default = {
 
       var params = this.queryParamName ? (0, _assign2.default)((0, _defineProperty3.default)({}, this.queryParamName, this.query), this.data) : this.data;
 
-      return this.$http.get(src, { params: params });
+            return this.$http.get(src, { params: params,
+          before(request) {
+
+              // abort previous request, if exists
+              if (this.previousRequest) {
+                  this.previousRequest.abort();
+              }
+
+              // set previous request on Vue instance
+              this.previousRequest = request;
+          }
+      });
     },
     processResponseData: function processResponseData(data) {
       this.totalFound = data.length;
