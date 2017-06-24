@@ -116,6 +116,8 @@ exports.default = {
       loading: false,
       timeout: null,
 
+      cancelToken: null,
+
       cache: true,
       maxCacheItems: 5,
       cacheEmptyResults: true,
@@ -129,11 +131,17 @@ exports.default = {
       rateLimitWait: 300
     };
   },
+    created: function () {
+        // `this` points to the vm instance
+        this.ensureCacheInit();
+        this.cancelToken = this.$http.CancelToken;
+        this.cancelSource = this.cancelToken.source();
+    },
 
 
   methods: {
-    ready: function ready() {
-      this.ensureCacheInit();
+    mounted: function ready() {
+
     },
     input: function input() {
       var context = this,
@@ -148,17 +156,12 @@ exports.default = {
           func.apply(context, args);
         }
       };
-
       var callNow = immediate && !this.timeout;
-
       clearTimeout(this.timeout);
-
       this.timeout = setTimeout(later, wait);
-
       if (callNow) {
         func.apply(context, args);
       }
-
       return;
     },
     update: function update() {
@@ -167,24 +170,17 @@ exports.default = {
       if (!this.query) {
         return this.reset();
       }
-
       if (this.query.length < this.minChars) {
         return;
       }
-
       this.loading = true;
       this.totalFound = null;
-
       this.ensureCacheInit();
-
       var cacheKey = this.query.replace(' ', ':');
-
       if (this.cache && this.sharedCache.has(cacheKey)) {
         var data = this.sharedCache.get(cacheKey);
-
         return this.processResponseData(data);
       }
-
       this.fetch().then(function (response) {
         if (_this.query) {
           var _data = response.data;
@@ -193,7 +189,6 @@ exports.default = {
           if (_this.cacheEmptyResults || _data.length > 0) {
             _this.sharedCache.set(cacheKey, _data);
           }
-
           _this.processResponseData(_data);
         }
       });
@@ -206,22 +201,12 @@ exports.default = {
       if (!this.src) {
         return _vue.util.warn('You need to set the `src` property', this);
       }
-
+      this.cancelSource.cancel();
       var src = this.queryParamName ? this.src : this.src + this.query;
-
       var params = this.queryParamName ? (0, _assign2.default)((0, _defineProperty3.default)({}, this.queryParamName, this.query), this.data) : this.data;
-
-            return this.$http.get(src, { params: params,
-          before(request) {
-
-              // abort previous request, if exists
-              if (this.previousRequest) {
-                  this.previousRequest.abort();
-              }
-
-              // set previous request on Vue instance
-              this.previousRequest = request;
-          }
+      this.cancelToken = this.$http.CancelToken;
+      this.cancelSource = this.cancelToken.source();
+      return this.$http.get(src, { params: params, cancelToken: this.cancelSource.token
       });
     },
     processResponseData: function processResponseData(data) {
